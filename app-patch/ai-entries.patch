@@ -1,0 +1,103 @@
+diff --git a/src/index.html b/src/index.html
+index 2ef0ed2..5bda411 100644
+--- a/src/index.html
++++ b/src/index.html
+@@ -56,6 +56,9 @@ input:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:-1px}
+ .btn.small{min-height:36px;padding:6px 12px;font-size:14px}
+ .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+ .muted{color:var(--muted)} .hint{color:var(--muted);font-size:13px;margin:4px 0 0}
++.aib{display:inline-block;font-size:11px;font-weight:700;padding:1px 6px;border-radius:4px;background:#f2c230;color:#000;white-space:nowrap}
++.aib.low{background:#e0806d} .aib.medium{background:#e8b84a} .aib.high{background:#7fc98f}
++.aitoggle{color:var(--text);gap:6px} .aitoggle input{width:20px;height:20px}
+ .savebar{position:sticky;bottom:0;padding:10px 0;background:linear-gradient(transparent,var(--bg) 30%);display:flex;gap:8px}
+ .savebar .btn.primary{flex:1;font-size:18px;min-height:54px}
+ /* field map */
+@@ -174,6 +177,7 @@ details.form[open] summary{margin-bottom:6px}
+         <button data-mode="teams">Team summary</button><button data-mode="matches">Every match</button><button data-mode="pits">Pit data</button>
+       </div>
+       <input type="text" id="dataFilter" placeholder="Filter by team #…" inputmode="numeric" style="max-width:200px">
++      <label class="row aitoggle"><input type="checkbox" data-ai-toggle> Include AI-scouted entries</label>
+     </div>
+     <p class="hint">Tap a column to sort. Tap a row for the written notes.</p>
+     <div class="tablewrap"><table id="dataTable"></table></div>
+@@ -187,6 +191,7 @@ details.form[open] summary{margin-bottom:6px}
+       <h2>Rank teams by</h2>
+       <div class="rankpick" id="rankPick"></div>
+       <p class="hint" id="rankNote"></p>
++      <label class="row aitoggle" style="margin-top:8px"><input type="checkbox" data-ai-toggle> Include AI-scouted entries</label>
+     </div>
+     <div class="card">
+       <h2 id="rankTitle"></h2>
+@@ -288,7 +293,7 @@ let pits = LS.get(K.pits, []);
+ let pres = LS.get(K.pre, []);
+ // when this device last received each scout's data: { 'ana': { name, qr, qrN, file, fileN } }
+ let scanLog = LS.get(K.scans, {});
+-const ui = Object.assign({ view: 'match', dataMode: 'teams', rankBy: 'overall', sort: { teams: ['Tele scores', -1], matches: ['Match', 1], pits: ['Team', 1] } }, LS.get(K.ui, {}));
++const ui = Object.assign({ view: 'match', showAI: true, dataMode: 'teams', rankBy: 'overall', sort: { teams: ['Tele scores', -1], matches: ['Match', 1], pits: ['Team', 1] } }, LS.get(K.ui, {}));
+ const saveSettings = () => LS.set(K.settings, settings);
+ const saveUI = () => LS.set(K.ui, ui);
+ 
+@@ -796,8 +801,15 @@ const pct = n => n == null ? '—' : Math.round(n) + '%';
+ const tally = arr => arr.reduce((m, v) => (m[v] = (m[v] || 0) + 1, m), {});
+ const topTags = (t, n = 3) => Object.entries(t).sort((a, b) => b[1] - a[1]).slice(0, n);
+ 
++// AI Scout entries (from match video) carry an "ai" block; the toggle on Data/Rank leaves them out of every stat
++const isAI = m => !!m.ai || m.scouter === 'AI Scout';
++const counted = () => ui.showAI ? matches : matches.filter(m => !isAI(m));
++const CONF_RANK = { low: 0, medium: 1, high: 2 };
++// lowest section confidence, so a badge never looks surer than its weakest part
++const aiConf = m => Object.values(m.ai?.confidence || {}).sort((a, b) => CONF_RANK[a] - CONF_RANK[b])[0] || '';
++const aiBadge = m => `<span class="aib ${aiConf(m)}" title="AI-scouted from match video${m.ai?.confidence ? ': ' + Object.entries(m.ai.confidence).map(([k, v]) => k + ' ' + v).join(', ') : ''}">AI${aiConf(m) ? ' · ' + aiConf(m) : ''}</span>`;
+ function teamStats(team) {
+-  const ms = matches.filter(m => m.team === team).sort((a, b) => a.match - b.match);
++  const ms = counted().filter(m => m.team === team).sort((a, b) => a.match - b.match);
+   const count = f => ms.filter(f).length;
+   const climbs = ms.filter(m => m.end.climb === 'ok');
+   return {
+@@ -862,7 +874,7 @@ const TABLES = {
+     open: s => openTeam(s.team)
+   },
+   matches: {
+-    rows: () => matches,
++    rows: () => counted(),
+     cols: [
+       ['Match', m => +m.match], ['Team', m => +m.team], ['Alliance', m => m.alliance + m.station, (v, m) => m.alliance ? `<span class="${m.alliance === 'R' ? 'r' : 'b'}">${m.alliance}${m.station}</span>` : '—'],
+       ['Robot type', m => m.robotType || null],
+@@ -870,7 +882,7 @@ const TABLES = {
+       ['Tele col', m => m.tele.collected, yn], ['Tele scr', m => m.tele.scored, yn], ['Tele %', m => m.tele.acc, pct],
+       ['End cyc', m => m.end.cycles], ['Climb', m => m.end.climb === 'ok' ? 10 + (+m.end.rung || 0) : m.end.climb === 'fail' ? 1 : 0, (v, m) => climbLabel(m)],
+       ['Defense', m => m.tele.defense, yn], ['Beached', m => m.tele.beached, yn], ['Broke', m => m.extra.breakdown, yn], ['Stop', m => m.extra.stop === 'estop' ? 2 : m.extra.stop === 'astop' ? 1 : m.extra.stop === 'none' ? 0 : null, (v, m) => stopLabel(m.extra.stop)], ['Pen.', m => m.extra.penalties],
+-      ['Scouter', m => m.scouter]
++      ['Scouter', m => m.scouter, (v, m) => isAI(m) ? aiBadge(m) : esc(v ?? '—')]
+     ],
+     open: m => openMatch(m.id)
+   },
+@@ -1002,6 +1014,7 @@ function writtenBlock(ms) {
+ // The answers on one match form, in the order the form asks them.
+ function matchDetail(m) {
+   return `<p class="muted">${m.alliance ? (m.alliance === 'R' ? 'Red' : 'Blue') + ' ' + m.station + ' · ' : ''}${m.robotType ? esc(m.robotType) + ' · ' : ''}${esc(m.scouter)} · ${new Date(m.ts).toLocaleString()}</p>
++    ${isAI(m) ? `<p>${aiBadge(m)} <span class="muted">Scouted by AI from the match video${m.ai?.video ? ` (<a href="https://youtu.be/${esc(m.ai.video)}" target="_blank" rel="noopener">watch</a>)` : ''}. Climbs and auto hangs come from official results.${m.ai?.balls != null ? `<br><b>≈${m.ai.balls} balls scored</b>: the AI's estimated share (${Math.round(m.ai.ballsShare * 100)}%) of the alliance's official ${m.ai.allianceBalls}.` : ''}${m.ai?.found === false ? ' <b>The AI could not find this robot in the video.</b>' : ''}${(m.ai?.flags || []).length ? '<br>⚠ ' + esc(m.ai.flags.join(' · ')) : ''}</span></p>` : ''}
+     ${(m.auto.path || []).length ? `<div style="max-width:420px">${fieldSVG('', pathSVG(m.auto.path))}</div>` : ''}
+     <p><b>Auto:</b> started ${m.auto.start ? esc(m.auto.start.toLowerCase()) : '—'}, preloaded ${yn(m.auto.preload)}, collected ${yn(m.auto.collected)}, ${m.auto.cycles} cycles, scored ${yn(m.auto.scored)} (${pct(m.auto.acc)}), hang ${yn(m.auto.hang)}, got down ${yn(m.auto.down)}<br>
+     <b>Teleop:</b> collected ${yn(m.tele.collected)}, scored ${yn(m.tele.scored)} (${pct(m.tele.acc)}), beached ${yn(m.tele.beached)}${m.tele.beached ? `${(m.tele.beachWhere || []).length ? ' (' + esc(m.tele.beachWhere.join(', ')) + ')' : ''}, recovered ${yn(m.tele.recovered)}` : ''}, defense ${yn(m.tele.defense)}${m.tele.defZones.length ? ' (' + esc(m.tele.defZones.join(', ')) + ')' : ''}<br>
+@@ -1423,7 +1436,8 @@ function toCSV(list, blank) {
+   const cell = v => { const s = v == null ? '' : String(v); return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+   return [cols.join(','), ...list.map(e => { const f = flatten(e); return cols.map(c => cell(c === 'ts' ? new Date(f.ts).toISOString() : f[c])).join(','); })].join('\r\n');
+ }
+-$('#btnExportCSV').onclick = () => download(`${fileTag()}-matches-${stamp()}.csv`, toCSV(matches.slice().sort((a, b) => a.match - b.match || a.team - b.team), blankMatch()), 'text/csv');
++$('#btnExportCSV').onclick = () => download(`${fileTag()}-matches-${stamp()}.csv`, toCSV(matches.slice().sort((a, b) => a.match - b.match || a.team - b.team),
++  Object.assign(blankMatch(), { ai: { found: null, balls: null, ballsShare: null, allianceBalls: null, confidence: { auto: '', tele: '', end: '', extra: '' }, flags: [] } })), 'text/csv');
+ $('#btnExportPitCSV').onclick = () => download(`${fileTag()}-pits-${stamp()}.csv`, toCSV(pits, blankPit()), 'text/csv');
+ $('#importFile').onchange = async e => { for (const f of e.target.files) importText(await f.text()); e.target.value = ''; };
+ $('#btnPaste').onclick = () => { if (importText($('#pasteBox').value)) $('#pasteBox').value = ''; };
+@@ -1497,6 +1511,10 @@ function show(view) {
+ }
+ $('#nav').onclick = e => { const b = e.target.closest('[data-view]'); if (b) show(b.dataset.view); };
+ $$('[data-setting]').forEach(el => el.type === 'checkbox' ? el.checked = !!settings[el.dataset.setting] : el.value = settings[el.dataset.setting] || '');
++$$('[data-ai-toggle]').forEach(el => {
++  el.checked = ui.showAI;
++  el.onchange = () => { ui.showAI = el.checked; saveUI(); $$('[data-ai-toggle]').forEach(x => x.checked = ui.showAI); refreshViews(); };
++});
+ 
+ // Scouting mode (the default) hides the analysis tabs; Admin shows everything
+ function applyTabs() {

@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Scout</title>
+<style>
+  :root { --bg:#0f141b; --card:#18202b; --line:#2a3544; --text:#e8edf3; --muted:#93a1b3; --red:#d9534f; --blue:#4a7fd9; --ok:#3fae6a; --warn:#d9a43f; --accent:#f2c230; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.45 -apple-system, system-ui, sans-serif; background:var(--bg); color:var(--text); }
+  header { padding:14px 20px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:12px; }
+  header h1 { font-size:18px; margin:0; }
+  header .tag { background:var(--accent); color:#000; font-weight:700; border-radius:4px; padding:1px 6px; font-size:12px; }
+  main { max-width:1100px; margin:0 auto; padding:16px 20px 60px; display:grid; gap:16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; }
+  .card h2 { font-size:15px; margin:0 0 12px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  .row { display:flex; flex-wrap:wrap; gap:12px; align-items:end; }
+  label { display:flex; flex-direction:column; gap:4px; font-size:13px; color:var(--muted); }
+  input, select, button { font:inherit; color:var(--text); background:#0c1117; border:1px solid var(--line); border-radius:7px; padding:7px 10px; }
+  input[type=number] { width:90px; }
+  button { cursor:pointer; background:#223042; }
+  button.primary { background:var(--accent); color:#000; font-weight:600; border-color:var(--accent); }
+  button:disabled { opacity:.5; cursor:default; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; max-height:160px; overflow:auto; }
+  .chip { padding:3px 9px; border-radius:14px; font-size:13px; background:#0c1117; }
+  .chip.on { background:var(--accent); color:#000; border-color:var(--accent); }
+  .hint { color:var(--muted); font-size:13px; margin:8px 0 0; }
+  .job { border-top:1px solid var(--line); padding:12px 0; }
+  .job:first-of-type { border-top:0; padding-top:0; }
+  .job .top { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .status { font-size:12px; font-weight:700; padding:2px 7px; border-radius:4px; background:#2a3544; text-transform:uppercase; }
+  .status.running { background:var(--blue); } .status.done { background:var(--ok); } .status.paused { background:var(--warn); color:#000; }
+  .bar { height:6px; background:#0c1117; border-radius:3px; overflow:hidden; margin:8px 0; }
+  .bar > div { height:100%; background:var(--ok); }
+  .mchips { display:flex; flex-wrap:wrap; gap:4px; }
+  .m { font-size:12px; padding:2px 6px; border-radius:4px; background:#0c1117; border:1px solid var(--line); cursor:default; }
+  .m.done { background:#1c3a29; border-color:var(--ok); cursor:pointer; } .m.running { background:#1c2c4a; border-color:var(--blue); }
+  .m.failed { background:#4a1c1c; border-color:var(--red); }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:6px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:600; }
+  .R { color:#ff8a85; font-weight:700; } .B { color:#8fb4ff; font-weight:700; }
+  .conf { font-size:11px; padding:1px 5px; border-radius:3px; }
+  .conf.high { background:#1c3a29; } .conf.medium { background:#3a331c; } .conf.low { background:#4a1c1c; }
+  .flag { color:var(--warn); font-size:12px; }
+  .imgs { display:flex; gap:8px; margin:10px 0; } .imgs img { width:49%; border-radius:6px; }
+  pre.log { max-height:200px; overflow:auto; font-size:12px; color:var(--muted); margin:0; white-space:pre-wrap; }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+<header><span class="tag">AI</span><h1>AI Scout</h1><span class="hint" style="margin:0">Scouts posted FRC match videos into entries for your scouting app</span></header>
+<main>
+
+<section class="card" id="setup">
+  <h2>Settings</h2>
+  <div class="row">
+    <label>Blue Alliance read key <input id="tbaKey" type="password" placeholder="saved" size="40"></label>
+    <label>AI engine <select id="backend"><option value="claude-code">Claude (your Max plan)</option><option value="ollama">Local model (Ollama, free)</option></select></label>
+    <label id="claudeModelBox">Claude model <select id="model"><option value="">Account default</option><option value="opus">Opus (best)</option><option value="sonnet">Sonnet (uses less of your Max limit)</option></select></label>
+    <label id="ollamaModelBox" class="hidden">Local model <select id="ollamaModel"></select></label>
+    <button id="saveCfg">Save</button>
+  </div>
+  <p class="hint" id="cfgNote"></p>
+  <p class="hint hidden" id="ollamaNote"></p>
+</section>
+
+<section class="card">
+  <h2>What to scout</h2>
+  <div class="row">
+    <label>Year <input id="year" type="number" min="1992" max="2100"></label>
+    <label style="flex:1;min-width:280px">Event <input id="event" list="eventList" placeholder="Type to search, e.g. Glacier Peak or 2026wasno"></label>
+    <datalist id="eventList"></datalist>
+  </div>
+  <div id="eventBox" class="hidden">
+    <p class="hint" id="eventNote"></p>
+    <div class="row" style="margin-top:10px">
+      <label>From qual # <input id="from" type="number" min="1"></label>
+      <label>To qual # <input id="to" type="number" min="1"></label>
+      <button id="allTeams">Clear team filter</button>
+    </div>
+    <p class="hint">Teams: tap to scout only these teams (none selected = every robot in the selected matches).</p>
+    <div class="chips" id="teams"></div>
+    <div class="row" style="margin-top:14px">
+      <button class="primary" id="start" disabled>Start scouting</button>
+      <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="rescout"> Re-scout matches already done</label>
+    </div>
+    <p class="hint" id="preview"></p>
+  </div>
+</section>
+
+<section class="card">
+  <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:12px">
+    <h2 style="margin:0">Jobs</h2>
+    <button id="clearJobs" class="hidden" title="Removes done and cancelled jobs from this list. Scouted matches stay saved and won't be scouted again.">Clear finished jobs</button>
+  </div>
+  <div id="jobs"><p class="hint">No jobs yet.</p></div>
+</section>
+
+<section class="card hidden" id="detail">
+  <h2 id="detailTitle">Match</h2>
+  <p class="hint" id="detailNotes"></p>
+  <div class="imgs" id="detailImgs"></div>
+  <table><thead><tr><th>Team</th><th>Auto</th><th>Teleop</th><th>Endgame</th><th>Overall</th></tr></thead><tbody id="detailBody"></tbody></table>
+</section>
+
+<section class="card">
+  <h2>Activity</h2>
+  <pre class="log" id="log"></pre>
+</section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const api = async (path, body) => {
+  const r = await fetch('/api/' + path, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {});
+  const d = await r.json();
+  if (d && d.error) throw new Error(d.error);
+  return d;
+};
+let events = [], info = null, picked = new Set();
+
+let engine = 'claude-code';
+async function loadOllama(selected) {
+  const o = await api('ollama');
+  const models = o.models || [];
+  const opts = [...new Set([selected, ...models].filter(Boolean))];
+  $('#ollamaModel').innerHTML = opts.length ? opts.map(m => `<option>${esc(m)}</option>`).join('') : `<option>${esc(o.recommended)}</option>`;
+  if (selected) $('#ollamaModel').value = selected;
+  $('#ollamaNote').innerHTML = o.models === null
+    ? `Ollama isn't running or isn't installed. Install it from <a href="https://ollama.com/download" target="_blank" style="color:var(--accent)">ollama.com</a>, open it, then in Terminal run <code>ollama pull ${esc(o.recommended)}</code>.`
+    : !models.length ? `Ollama is running but has no models. In Terminal run <code>ollama pull ${esc(o.recommended)}</code> (3.3 GB), then reload this page.`
+    : `Local models are free but much slower (several minutes per match) and less accurate than Claude. Recommended: ${esc(o.recommended)}.`;
+}
+function showEngine() {
+  engine = $('#backend').value;
+  $('#claudeModelBox').classList.toggle('hidden', engine !== 'claude-code');
+  $('#ollamaModelBox').classList.toggle('hidden', engine !== 'ollama');
+  $('#ollamaNote').classList.toggle('hidden', engine !== 'ollama');
+}
+$('#backend').onchange = () => { showEngine(); if (engine === 'ollama') loadOllama($('#ollamaModel').value); };
+async function loadConfig() {
+  const c = await api('config');
+  $('#model').value = c.model;
+  $('#backend').value = c.backend;
+  await loadOllama(c.ollamaModel);
+  showEngine();
+  $('#cfgNote').textContent = c.hasKey ? 'Blue Alliance key saved.' : 'Add your Blue Alliance read key (thebluealliance.com/account) to get started.';
+}
+$('#saveCfg').onclick = async () => {
+  const body = { model: $('#model').value, backend: $('#backend').value, ollama_model: $('#ollamaModel').value };
+  if ($('#tbaKey').value.trim()) body.tba_key = $('#tbaKey').value.trim();
+  await api('config', body); $('#tbaKey').value = ''; loadConfig(); loadEvents();
+};
+
+async function loadEvents() {
+  try {
+    events = await api('events?year=' + $('#year').value);
+    $('#eventList').innerHTML = events.map(e => `<option value="${esc(e.key)}">${esc(e.name)} (${e.date})</option>`).join('');
+  } catch (e) { $('#cfgNote').textContent = 'Could not load events: ' + e.message; }
+}
+$('#year').value = new Date().getFullYear();
+$('#year').onchange = loadEvents;
+
+$('#event').onchange = async () => {
+  const key = $('#event').value.trim();
+  const ev = events.find(e => e.key === key);
+  if (!ev) return;
+  $('#eventNote').textContent = 'Loading…';
+  $('#eventBox').classList.remove('hidden');
+  info = await api('event/' + key);
+  picked.clear();
+  $('#eventNote').textContent = `${ev.name}: ${info.quals} qualification matches, ${info.withVideo} with video, ${info.teams.length} teams.`;
+  $('#from').value = 1; $('#to').value = info.lastQual;
+  $('#teams').innerHTML = info.teams.map(t => `<button class="chip" data-t="${t}">${t}</button>`).join('');
+  updatePreview();
+};
+$('#teams').onclick = e => {
+  const b = e.target.closest('[data-t]'); if (!b) return;
+  const t = b.dataset.t; picked.has(t) ? picked.delete(t) : picked.add(t);
+  b.classList.toggle('on', picked.has(t)); updatePreview();
+};
+$('#allTeams').onclick = () => { picked.clear(); $('#teams').querySelectorAll('.on').forEach(b => b.classList.remove('on')); updatePreview(); };
+$('#from').oninput = $('#to').oninput = () => updatePreview();
+
+const selection = () => ({ event: $('#event').value.trim(), start: +$('#from').value || null, end: +$('#to').value || null, teams: picked.size ? [...picked] : null });
+let pvTimer;
+function updatePreview() {
+  clearTimeout(pvTimer);
+  pvTimer = setTimeout(async () => {
+    const p = await api('preview', selection());
+    const mins = p.matches.length * (engine === 'ollama' ? 10 : 4);
+    $('#preview').textContent = p.matches.length
+      ? `${p.matches.length} matches, ${p.robots} robots. About ${mins < 90 ? mins + ' min' : (mins / 60).toFixed(1) + ' h'} ${engine === 'ollama' ? ' with the local model (rough guess; depends on your Mac)' : " if it isn't paused by usage limits"}.` + (p.noVideo.length ? ` No video yet: ${p.noVideo.join(', ')}.` : '')
+      : 'No matches fit that selection.';
+    $('#start').disabled = !p.matches.length;
+  }, 250);
+}
+$('#start').onclick = async () => {
+  $('#start').disabled = true;
+  await api('jobs', Object.assign(selection(), { rescout: $('#rescout').checked }));
+  refresh(); $('#start').disabled = false;
+};
+
+const fmtTime = t => new Date(t * 1000).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+async function refresh() {
+  const { jobs, log } = await api('jobs');
+  $('#log').textContent = log.join('\n');
+  $('#clearJobs').classList.toggle('hidden', !jobs.some(j => ['done', 'cancelled'].includes(j.status)));
+  if (!jobs.length) { $('#jobs').innerHTML = '<p class="hint">No jobs yet.</p>'; return; }
+  $('#jobs').innerHTML = jobs.map(j => {
+    const done = j.matches.filter(m => m.status === 'done').length;
+    const what = [j.start || j.end ? `quals ${j.start || 1}–${j.end || 'end'}` : 'all quals', j.teams.length ? 'teams ' + j.teams.join(', ') : 'all teams'].join(' · ');
+    const pause = j.status === 'paused' && j.paused_until ? ` Usage limit reached: resumes around ${fmtTime(j.paused_until)}.` : '';
+    return `<div class="job"><div class="top"><b>${esc(j.event)}</b><span class="status ${j.status}">${j.status}</span>
+      <span class="hint" style="margin:0">${esc(what)} · ${done}/${j.matches.length} matches${pause}</span>
+      <span style="flex:1"></span>
+      ${done ? `<a href="/api/jobs/${j.id}/download"><button>Download import file</button></a>` : ''}
+      ${['queued', 'running', 'paused'].includes(j.status) ? `<button data-cancel="${j.id}">Cancel</button>` : ''}</div>
+      <div class="bar"><div style="width:${j.matches.length ? 100 * done / j.matches.length : 0}%"></div></div>
+      <div class="mchips">${j.matches.map(m => `<span class="m ${m.status}" data-key="${m.match_key}" title="${esc(m.error || m.status)}">${m.label}</span>`).join('')}</div></div>`;
+  }).join('');
+}
+$('#clearJobs').onclick = async () => { await api('jobs/clear', {}); $('#detail').classList.add('hidden'); refresh(); };
+$('#jobs').onclick = async e => {
+  const c = e.target.closest('[data-cancel]');
+  if (c) { await api('jobs/' + c.dataset.cancel + '/cancel', {}); return refresh(); }
+  const m = e.target.closest('.m.done');
+  if (m) showMatch(m.dataset.key);
+};
+
+const yn = v => v === true ? 'yes' : v === false ? 'no' : '?';
+const conf = c => `<span class="conf ${c}">${c}</span>`;
+async function showMatch(key) {
+  const d = await api('result/' + key);
+  $('#detail').classList.remove('hidden');
+  $('#detailTitle').textContent = key + (d.video ? '' : '');
+  $('#detailNotes').innerHTML = `${esc(d.video_notes)} <a href="https://youtu.be/${esc(d.video)}?t=${Math.floor(d.start)}" target="_blank" style="color:var(--accent)">Watch video</a>`;
+  $('#detailImgs').innerHTML = ['id_red', 'id_blue'].map(n => `<img src="/api/image/${key}/${n}.jpg" alt="${n}">`).join('');
+  $('#detailBody').innerHTML = d.robots.map(r => `<tr>
+    <td><b>${esc(r.team)}</b><br>${r.found ? '' : '<span class="flag">not found</span>'}${esc(r.robotType)}</td>
+    <td>${conf(r.confidence.auto)} start ${esc(r.auto.start ?? '?')}, cycles ${r.auto.cycles}, scored ${yn(r.auto.scored)}, hang ${yn(r.auto.hang)}<br><small>${esc(r.auto.notes)}</small></td>
+    <td>${conf(r.confidence.tele)} acc ${r.tele.acc ?? '?'}%, defense ${yn(r.tele.defense)}${r.tele.beached ? ', beached' : ''}<br><small>${esc(r.tele.notes)}</small></td>
+    <td>${conf(r.confidence.end)} climb ${esc(r.end.climb ?? '?')}${r.end.rung ? ' rung ' + r.end.rung : ''}<br><small>${esc(r.end.notes)}</small></td>
+    <td>${conf(r.confidence.extra)} driver ${r.extra.driver ?? '?'}/5<br><small>${esc(r.extra.overall)}</small></td></tr>`).join('');
+  $('#detail').scrollIntoView({ behavior: 'smooth' });
+}
+
+loadConfig(); loadEvents(); refresh(); setInterval(refresh, 3000);
+</script>
+</body>
+</html>

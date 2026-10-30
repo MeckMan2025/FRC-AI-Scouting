@@ -1,0 +1,155 @@
+{
+  "year": 2026,
+  "name": "REBUILT",
+  "timing": {
+    "auto_s": 20,
+    "transition_s": 3,
+    "teleop_s": 140,
+    "endgame_s": 30
+  },
+  "frames": {
+    "auto_fps": 1.0,
+    "teleop_fps": 0.25,
+    "endgame_fps": 0.5,
+    "sheet_cols": 1,
+    "sheet_rows": 2,
+    "frame_width": 1560,
+    "id_width": 1000
+  },
+  "rules_summary": [
+    "Robots score balls (FUEL) into their alliance's HUB. Red hub is near the red alliance zone, blue hub near the blue alliance zone.",
+    "Each alliance has a DEPOT holding balls and a LADDER/TOWER at its driver-station wall that robots climb in the endgame. Rungs are numbered 1 (lowest) to 3 (highest).",
+    "BUMPS and TRENCHES separate the alliance zones from the center. Some robots drive under the trench, some over the bump, some both.",
+    "Auto is the first ~20 seconds; robots run without drivers. Teleop follows; the last 30 seconds are the endgame.",
+    "A cycle is one trip of collecting balls then scoring them."
+  ],
+  "field_map": {
+    "description": "The app's field map is an 820x400 SVG. Red alliance wall is on the LEFT (x=10), blue on the RIGHT (x=810). y=10 is the top edge, y=390 the bottom edge, as seen in a broadcast view where red is on the left. Red alliance zone x 10-180, transition x 180-260, center x 260-560, transition x 560-640, blue alliance zone x 640-810. Red hub center (220,200), blue hub center (600,200), radius 34 (do not put points on a hub). Red depot x10-105 y300-390, red ladder x10-70 y150-250, blue depot x715-810 y10-100, blue ladder x750-810 y150-250.",
+    "width": 820,
+    "height": 400
+  },
+  "look_for": {
+    "auto": "Where each robot starts (Left/Middle/Right from its OWN driver station's view: red drivers face right, blue drivers face left), whether it starts holding a ball, the path it drives (3-6 points on the field map), whether it collects more balls, how many collect->score cycles, roughly what fraction of its shots go in, whether it scored any, whether it hangs on the ladder in auto and whether it got back down.",
+    "tele": "Whether it collects and scores balls, rough shot accuracy, whether it got beached/stuck (on a bump, in the trench, on a ball, on another robot) and recovered, whether it played defense and where (Center, Transition, Opponent Alliance Zone).",
+    "end": "Collect->score cycles in the last 30 s, accuracy, whether it tried to climb, failed, or climbed, and to which rung.",
+    "extra": "Visible fouls (pinning, contact in protected zone, over extension), breakdowns (stopped moving, tipped, mechanism broke) and whether it came back, driver skill 1-5 (smoothness, speed, avoiding traffic), the team's apparent strategy, and an overall one-line summary."
+  },
+  "enums": {
+    "auto.start": [
+      "Left",
+      "Middle",
+      "Right"
+    ],
+    "acc": [
+      0,
+      25,
+      50,
+      75,
+      100
+    ],
+    "tele.beachWhere": [
+      "Bump",
+      "Trench",
+      "Ball",
+      "Other robot"
+    ],
+    "tele.defZones": [
+      "Center",
+      "Transition",
+      "Opponent Alliance Zone"
+    ],
+    "end.climb": [
+      "none",
+      "fail",
+      "ok"
+    ],
+    "end.rung": [
+      "1",
+      "2",
+      "3"
+    ],
+    "extra.penKinds": [
+      "Minor foul",
+      "Major foul",
+      "Yellow card",
+      "Red card",
+      "Pinning",
+      "Contact in protected zone",
+      "Over extension",
+      "Other"
+    ],
+    "extra.problems": [
+      "Lost comms",
+      "Brownout / no power",
+      "Mechanism broke",
+      "Tipped over",
+      "Jammed intake",
+      "Stuck on game piece",
+      "Auto failed",
+      "Didn't move",
+      "Slow cycles",
+      "Missed a lot",
+      "Shaky driving",
+      "Easily pushed"
+    ],
+    "extra.stop": [
+      "none",
+      "astop",
+      "estop"
+    ],
+    "robotType": [
+      "Under trench",
+      "Over bump",
+      "Both",
+      ""
+    ]
+  },
+  "tba_overrides": {
+    "_comment": "Per-robot fields from TBA score_breakdown; {n} is the driver station 1-3. A map value of {keep, else} keeps the AI's call if it's in keep, otherwise uses else.",
+    "fields": [
+      {
+        "breakdown": "autoTowerRobot{n}",
+        "map": {
+          "Level1": {
+            "auto.hang": true
+          },
+          "None": {
+            "auto.hang": false,
+            "auto.down": null
+          }
+        }
+      },
+      {
+        "breakdown": "endGameTowerRobot{n}",
+        "map": {
+          "Level1": {
+            "end.climb": "ok",
+            "end.rung": 1
+          },
+          "Level2": {
+            "end.climb": "ok",
+            "end.rung": 2
+          },
+          "Level3": {
+            "end.climb": "ok",
+            "end.rung": 3
+          },
+          "None": {
+            "end.climb": {
+              "keep": [
+                "none",
+                "fail"
+              ],
+              "else": "fail"
+            },
+            "end.rung": null
+          }
+        }
+      }
+    ]
+  },
+  "tba_alliance_totals": {
+    "_comment": "Official alliance totals (dotted path into score_breakdown.<color>). balls is split between robots by the AI's estimated shares.",
+    "balls": "hubScore.totalCount"
+  }
+}

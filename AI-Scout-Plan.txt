@@ -1,0 +1,81 @@
+# AI Scout for FRC match videos
+
+## Context
+The team's scouting app: `meckman2025.github.io/frc-scouting/FRC-Scouting.html` (single HTML file, data in localStorage, sync by QR/JSON/CSV, TBA read key for schedule). Goal: an AI that watches posted FRC match videos and produces scouting entries in the app's own format. It's mainly for **pre-event recon** (scouting other teams' earlier matches) and later for some **live** use.
+
+Decisions from the interview:
+- **Runs on Claude Code + Max plan** (`claude -p`, headless), no API key. Designed so a local model can be swapped in later. The machine is an M2 with 8 GB, so local models would have to be small.
+- **Selector:** event code, match range, and team filter, on a **local web page**.
+- **Hard fields:** best guess plus a per-section **confidence** and reasoning in the notes.
+- **TBA official breakdown wins** for any per-robot field it covers. Alliance totals are used to sanity-check ball scoring.
+- **Delivery:** a `.json` file loaded with the app's existing "Import files…" button. App changes: AI badge, confidence column, hide-AI toggle.
+- **Game-agnostic:** everything season-specific goes in `games/2026.json`.
+- **Validation:** against official TBA data, plus spot-checks by eye.
+
+## Target data format (from the app source)
+`blankMatch()` in FRC-Scouting.html:
+```
+{kind:'match', v:1, id, ts, scouter, event, match, team, alliance, station, robotType,
+ auto:{start(Left|Middle|Right), preload, path[], collected, cycles, acc(0|25|50|75|100), scored, hang, down, notes},
+ tele:{collected, acc, scored, beached, beachWhere[Bump|Trench|Ball|Other robot], recovered, defense,
+       defZones[Center|Transition|Opponent Alliance Zone], defDots[], notes},
+ end:{cycles, acc, climb(none|fail|ok), rung(1|2|3), notes},
+ extra:{penalties, penKinds[], penNotes, breakdown, comeback, stop(none|astop|estop), brkNotes,
+        problems[], probNotes, driver(1-5), strategy, overall}}
+```
+Imports merge by `id`. AI entries use `id = "ai-<matchKey>-frc<team>"` so a re-run replaces the old entry instead of adding a duplicate, and `scouter = "AI Scout"`. They also get an extra `ai:{model, version, confidence:{auto,tele,end,extra}, sources}` block. `upgrade()` only adds missing keys, so this extra block survives import. Check that during the build.
+
+## Layout (`/Users/andrewmeckley/Everett-Scouting-App`)
+```
+frc-scouting/          # git clone of meckman2025/frc-scouting (changes on branch ai-entries)
+ai-scout/
+  games/2026.json      # enums, rules summary, what to look for, match timing, TBA breakdown → field mapping
+  aiscout/tba.py       # events, teams, matches, match.videos (YouTube keys), score_breakdown
+  aiscout/video.py     # yt-dlp download (720p, cached), ffmpeg frame extraction
+  aiscout/align.py     # find match start in video (probe frames → read on-screen timer)
+  aiscout/frames.py    # sample frames per phase, build timestamped contact sheets
+  aiscout/scout.py     # build prompt, call backend, validate JSON, retry
+  aiscout/backends/claude_code.py   # `claude -p --output-format json`, Read tool only
+  aiscout/backends/base.py          # interface so a local model can be added later
+  aiscout/official.py  # apply TBA per-robot overrides and sanity checks
+  aiscout/export.py    # write app-format entries → out/<event>-<timestamp>.json
+  aiscout/queue.py     # SQLite job queue: resumable, waits out usage limits
+  server.py + web/index.html   # local selector UI + progress + download
+```
+
+## Pipeline per match
+1. **TBA:** get the match, its 6 teams with alliance and station, the video key, and `score_breakdown`.
+2. **Video:** download with yt-dlp and cache it. Find the match start by reading the on-screen timer from a few frames.
+3. **Frames:** take more frames during auto (~1 fps for 20 s) and the endgame/climb window, fewer during teleop (~0.3–0.5 fps). Tile them into contact sheets with timestamps burned in so each Claude call uses less of the usage limit.
+4. **Scout:** one `claude -p` call per match, covering all 6 robots. The prompt includes the game config, the teams and their bumper colors/stations, and the paths of the sheets to Read. The output must be JSON for the requested teams only, validated against the schema and retried once if invalid. Auto `path` is given as approximate points on the app's field SVG coordinates from the game config.
+5. **Official override:** TBA per-robot fields (e.g. climb level, auto leave) overwrite the AI's values. If the AI's ball-scoring estimates for an alliance disagree badly with the official total, lower the confidence and add a note.
+6. **Export:** merge results into one import file for the job.
+
+## Usage limits
+The queue processes one match at a time and records usage per match. When `claude -p` hits a rate or usage limit, the job pauses and resumes after the reset. The UI shows status ("paused until 9:40 PM"). Finished matches are never redone unless you choose "re-scout".
+
+## Local web page (`python server.py` → http://localhost:8765)
+- Year → event dropdown (TBA), match range (e.g. qm1–qm40, include playoffs), team filter as chips from the event's team list.
+- Preview of how many matches and robots are selected, then start a job.
+- Progress table per match (downloading / scouting / done / failed), a "download import file" button, and per-robot JSON with confidence.
+- The TBA key is entered once and stored in a local `config.json`.
+
+## App changes (frc-scouting clone, branch `ai-entries`)
+- An "AI" badge on entries where `scouter === 'AI Scout'` or an `ai` block exists, in the Data table and team views.
+- A confidence column/tooltip showing `ai.confidence`.
+- An "Include AI entries" toggle in Rank/Data, saved in settings.
+- Match CSV export gets `source` and confidence columns.
+- Imports keep the `ai` block (verify the merge logic).
+
+## Build order
+1. TBA + video + frames + a single-match `scout` CLI, to prove it works on a few 2026 matches.
+2. Official overrides, export, test import into the app.
+3. Queue/resume + usage-limit handling.
+4. Local web page.
+5. App changes.
+
+## Verification
+- Run on ~5 matches from a 2026 event. Compare the AI's raw climb/auto-leave calls with TBA *before* the override, and the AI's alliance ball totals against official scores. Print an accuracy report.
+- Spot-check auto paths, defense, and notes against the video by eye.
+- Import the output into the cloned app locally (open FRC-Scouting.html). Confirm the entries show the AI badge, re-import doesn't duplicate, and the hide-AI toggle changes Rank.
+- Record usage per match to estimate how many matches fit in each Max usage window.

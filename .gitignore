@@ -1,0 +1,12 @@
+# secrets (Blue Alliance key)
+ai-scout/config.json
+# rebuilt on first run
+ai-scout/.venv/
+__pycache__/
+# match videos, frames and AI results (large; regenerated)
+ai-scout/cache/
+# import files with scouting data
+ai-scout/out/
+# the scouting app is its own repo (meckman2025/frc-scouting); its changes are in app-patch/
+frc-scouting/
+.DS_Store
